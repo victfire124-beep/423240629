@@ -3,24 +3,168 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AI 图像分类器 - 学号姓名</title>
-    <link rel="stylesheet" href="style.css">
-    <!-- 引入 Transformers.js -->
+    <title>AI图像分类器 - 423240629 曾成焰</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: #f0f2f5;
+            margin: 0;
+            padding: 20px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+        }
+        .container {
+            background: white;
+            border-radius: 16px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.1);
+            padding: 2rem;
+            max-width: 600px;
+            width: 100%;
+            text-align: center;
+        }
+        .student-info {
+            background: #e9ecef;
+            padding: 10px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+        }
+        .student-info p {
+            margin: 5px;
+            font-size: 1.1rem;
+            font-weight: bold;
+        }
+        .upload-area {
+            margin: 20px 0;
+        }
+        #imageUpload {
+            margin-right: 10px;
+        }
+        button {
+            background: #007bff;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 1rem;
+        }
+        button:hover {
+            background: #0056b3;
+        }
+        .result {
+            margin: 20px 0;
+            background: #f8f9fa;
+            padding: 10px;
+            border-radius: 8px;
+        }
+        #preview {
+            max-width: 100%;
+            max-height: 300px;
+            margin-top: 10px;
+            border-radius: 8px;
+            border: 1px solid #ddd;
+        }
+        .status {
+            font-size: 0.9rem;
+            color: #666;
+            margin-top: 10px;
+        }
+    </style>
     <script type="importmap">
         {
             "imports": {
-                "@xenova/transformers": "https://cdn.jsdelivr.net/npm/@xenova/transformers@2.6.0/dist/transformers.min.js"
+                "@tensorflow/tfjs": "https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.15.0/dist/tf.min.js",
+                "@tensorflow-models/mobilenet": "https://cdn.jsdelivr.net/npm/@tensorflow-models/mobilenet@2.1.1/dist/mobilenet.min.js"
             }
         }
     </script>
-    <script type="module" src="script.js" defer></script>
+    <script type="module">
+        import * as tf from '@tensorflow/tfjs';
+        import * as mobilenetModule from '@tensorflow-models/mobilenet';
+
+        const imageUpload = document.getElementById('imageUpload');
+        const classifyBtn = document.getElementById('classifyBtn');
+        const resultText = document.getElementById('resultText');
+        const previewImg = document.getElementById('preview');
+        const statusDiv = document.getElementById('status');
+
+        let model = null;
+
+        async function loadModel() {
+            statusDiv.textContent = '正在加载 TensorFlow.js MobileNet 模型（约 5MB），请稍候...';
+            try {
+                await tf.ready();
+                model = await mobilenetModule.load();
+                statusDiv.textContent = '模型加载完成，可以上传图片进行分类！';
+                classifyBtn.disabled = false;
+            } catch (err) {
+                statusDiv.textContent = '模型加载失败，请刷新页面重试。错误：' + err.message;
+                console.error(err);
+                classifyBtn.disabled = true;
+            }
+        }
+
+        function loadImageFromFile(file) {
+            return new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    const img = new Image();
+                    img.onload = () => resolve(img);
+                    img.onerror = reject;
+                    img.src = e.target.result;
+                    previewImg.src = e.target.result;
+                };
+                reader.onerror = reject;
+                reader.readAsDataURL(file);
+            });
+        }
+
+        async function classifyImage(imageElement) {
+            if (!model) {
+                resultText.textContent = '模型尚未加载完成，请稍后再试。';
+                return;
+            }
+            resultText.textContent = '正在分类，请稍候...';
+            try {
+                const predictions = await model.classify(imageElement, 3);
+                if (predictions.length === 0) {
+                    resultText.textContent = '未识别出明确类别';
+                    return;
+                }
+                const formatted = predictions.map(p => `${p.className}：${(p.probability * 100).toFixed(2)}%`).join('；');
+                resultText.textContent = formatted;
+            } catch (err) {
+                resultText.textContent = '分类出错：' + err.message;
+                console.error(err);
+            }
+        }
+
+        classifyBtn.addEventListener('click', async () => {
+            const file = imageUpload.files[0];
+            if (!file) {
+                resultText.textContent = '请先选择一张图片。';
+                return;
+            }
+            try {
+                const img = await loadImageFromFile(file);
+                await classifyImage(img);
+            } catch (err) {
+                resultText.textContent = '图片加载失败，请重试。';
+                console.error(err);
+            }
+        });
+
+        loadModel();
+    </script>
 </head>
 <body>
     <div class="container">
         <h1>AI 图像分类器</h1>
         <div class="student-info">
-            <p>学号：<span id="student-id">423240629</span></p>
-            <p>姓名：<span id="student-name">曾成焰</span></p>
+            <p>学号：423240629</p>
+            <p>姓名：曾成焰</p>
         </div>
         <div class="upload-area">
             <input type="file" id="imageUpload" accept="image/*">
