@@ -72,9 +72,7 @@
             margin-top: 10px;
         }
     </style>
-    <!-- 加载 TensorFlow.js 和 MobileNet 模型（全局） -->
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.15.0/dist/tf.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/mobilenet@2.1.1/dist/mobilenet.min.js"></script>
 </head>
 <body>
     <div class="container">
@@ -98,7 +96,7 @@
     </div>
 
     <script>
-        // 等待 DOM 和 TensorFlow.js、MobileNet 全局变量可用
+        // 等待 DOM 加载完成
         document.addEventListener('DOMContentLoaded', () => {
             const imageUpload = document.getElementById('imageUpload');
             const classifyBtn = document.getElementById('classifyBtn');
@@ -107,30 +105,77 @@
             const statusDiv = document.getElementById('status');
 
             let model = null;
+            let modelLoaded = false;
 
-            // 检查 tf 和 mobilenet 是否可用
-            if (typeof tf === 'undefined') {
-                statusDiv.textContent = '错误：TensorFlow.js 未加载，请刷新页面重试。';
-                return;
-            }
-            if (typeof mobilenet === 'undefined') {
-                statusDiv.textContent = '错误：MobileNet 模型库未加载，请刷新页面重试。';
-                return;
+            // 加载 ImageNet 标签
+            let imagenetClasses = [];
+            async function loadLabels() {
+                try {
+                    const response = await fetch('https://storage.googleapis.com/download.tensorflow.org/data/ImageNetLabels.txt');
+                    const text = await response.text();
+                    imagenetClasses = text.split('\n').filter(line => line.trim() !== '');
+                    // 第一个是背景类，通常去掉
+                    imagenetClasses = imagenetClasses.slice(1);
+                    console.log('标签加载完成，共', imagenetClasses.length);
+                } catch (err) {
+                    console.error('加载标签失败', err);
+                }
             }
 
+            // 加载 MobileNet 模型
             async function loadModel() {
                 statusDiv.textContent = '正在加载 MobileNet 模型（约 5MB），请稍候...';
                 try {
-                    // 确保 tf 已就绪
                     await tf.ready();
-                    // 加载模型
-                    model = await mobilenet.load();
+                    // 使用 Google Cloud 托管的 MobileNet v2 模型（用于 TensorFlow.js）
+                    const modelUrl = 'https://storage.googleapis.com/tfjs-models/tfjs/mobilenet_v2_1.0_224/model.json';
+                    model = await tf.loadLayersModel(modelUrl);
+                    modelLoaded = true;
+                    await loadLabels(); // 加载分类标签
                     statusDiv.textContent = '模型加载完成，可以上传图片进行分类！';
                     classifyBtn.disabled = false;
                 } catch (err) {
                     statusDiv.textContent = '模型加载失败，请刷新页面重试。错误：' + err.message;
                     console.error(err);
                     classifyBtn.disabled = true;
+                }
+            }
+
+            // 预处理图片并推理
+            async function classifyImage(imageElement) {
+                if (!modelLoaded) {
+                    resultText.textContent = '模型尚未加载完成，请稍后再试。';
+                    return;
+                }
+                resultText.textContent = '正在分类，请稍候...';
+                try {
+                    // 将图片转换为 tensor，并调整大小到 224x224，归一化到 [0,1]
+                    const tensor = tf.browser.fromPixels(imageElement)
+                        .resizeNearestNeighbor([224, 224])
+                        .toFloat()
+                        .div(tf.scalar(255))
+                        .expandDims(0);
+                    
+                    const predictions = await model.predict(tensor).data();
+                    // 获取前 3 个预测结果
+                    const topK = 3;
+                    const values = Array.from(predictions);
+                    const indices = values.map((v, i) => i);
+                    indices.sort((a, b) => values[b] - values[a]);
+                    const topIndices = indices.slice(0, topK);
+                    const results = topIndices.map(i => ({
+                        className: imagenetClasses[i] || `类别 ${i}`,
+                        probability: values[i]
+                    }));
+                    
+                    const formatted = results.map(r => `${r.className}：${(r.probability * 100).toFixed(2)}%`).join('；');
+                    resultText.textContent = formatted;
+                    
+                    // 清理 tensor 以释放内存
+                    tensor.dispose();
+                } catch (err) {
+                    resultText.textContent = '分类出错：' + err.message;
+                    console.error(err);
                 }
             }
 
@@ -149,26 +194,6 @@
                 });
             }
 
-            async function classifyImage(imageElement) {
-                if (!model) {
-                    resultText.textContent = '模型尚未加载完成，请稍后再试。';
-                    return;
-                }
-                resultText.textContent = '正在分类，请稍候...';
-                try {
-                    const predictions = await model.classify(imageElement, 3);
-                    if (predictions.length === 0) {
-                        resultText.textContent = '未识别出明确类别';
-                        return;
-                    }
-                    const formatted = predictions.map(p => `${p.className}：${(p.probability * 100).toFixed(2)}%`).join('；');
-                    resultText.textContent = formatted;
-                } catch (err) {
-                    resultText.textContent = '分类出错：' + err.message;
-                    console.error(err);
-                }
-            }
-
             classifyBtn.addEventListener('click', async () => {
                 const file = imageUpload.files[0];
                 if (!file) {
@@ -184,7 +209,7 @@
                 }
             });
 
-            // 开始加载模型
+            // 开始加载模型和标签
             loadModel();
         });
     </script>
