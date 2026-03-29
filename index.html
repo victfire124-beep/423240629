@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI 图像分类器 - 学号姓名</title>
+    <link rel="stylesheet" href="style.css">
+    <!-- 引入 Transformers.js -->
+    <script type="importmap">
+        {
+            "imports": {
+                "@xenova/transformers": "https://cdn.jsdelivr.net/npm/@xenova/transformers@2.6.0/dist/transformers.min.js"
+            }
+        }
+    </script>
+    <script type="module" src="script.js" defer></script>
+</head>
+<body>
+    <div class="container">
+        <h1>AI 图像分类器</h1>
+        <div class="student-info">
+            <p>学号：<span id="student-id">20240001</span></p>
+            <p>姓名：<span id="student-name">张三</span></p>
+        </div>
+        <div class="upload-area">
+            <input type="file" id="imageUpload" accept="image/*">
+            <button id="classifyBtn">开始分类</button>
+        </div>
+        <div class="result">
+            <h3>分类结果：</h3>
+            <p id="resultText">等待上传图片...</p>
+        </div>
+        <div class="image-preview">
+            <img id="preview" src="" alt="图片预览">
+        </div>
+        <div class="status" id="status"></div>
+    </div>
+</body>
+</html>
