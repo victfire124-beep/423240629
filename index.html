@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AI图像分类器 - 423240629 曾成焰</title>
+    <title>AI语音识别器 - 423240629 曾成焰</title>
     <style>
         body {
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
@@ -35,36 +35,34 @@
             font-size: 1.1rem;
             font-weight: bold;
         }
-        .upload-area {
+        .control-area {
             margin: 20px 0;
-        }
-        #imageUpload {
-            margin-right: 10px;
         }
         button {
             background: #007bff;
             color: white;
             border: none;
-            padding: 8px 16px;
+            padding: 12px 24px;
             border-radius: 6px;
             cursor: pointer;
-            font-size: 1rem;
+            font-size: 1.1rem;
+            margin: 0 10px;
         }
-        button:hover {
-            background: #0056b3;
+        button:disabled {
+            background: #ccc;
+            cursor: not-allowed;
         }
         .result {
             margin: 20px 0;
             background: #f8f9fa;
-            padding: 10px;
+            padding: 15px;
             border-radius: 8px;
+            min-height: 100px;
+            text-align: left;
         }
-        #preview {
-            max-width: 100%;
-            max-height: 300px;
-            margin-top: 10px;
-            border-radius: 8px;
-            border: 1px solid #ddd;
+        .result p {
+            margin: 5px 0;
+            word-break: break-all;
         }
         .status {
             font-size: 0.9rem;
@@ -72,146 +70,121 @@
             margin-top: 10px;
         }
     </style>
-    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.15.0/dist/tf.min.js"></script>
 </head>
 <body>
     <div class="container">
-        <h1>AI 图像分类器</h1>
+        <h1>AI 语音识别器</h1>
         <div class="student-info">
             <p>学号：423240629</p>
             <p>姓名：曾成焰</p>
         </div>
-        <div class="upload-area">
-            <input type="file" id="imageUpload" accept="image/*">
-            <button id="classifyBtn" disabled>开始分类</button>
+        <div class="control-area">
+            <button id="startBtn" disabled>🎤 开始识别</button>
+            <button id="stopBtn" disabled>⏹️ 停止识别</button>
         </div>
         <div class="result">
-            <h3>分类结果：</h3>
-            <p id="resultText">等待上传图片...</p>
+            <h3>识别结果：</h3>
+            <p id="interimText">（临时结果）</p>
+            <p id="finalText">（最终结果）</p>
         </div>
-        <div class="image-preview">
-            <img id="preview" src="" alt="图片预览">
-        </div>
-        <div class="status" id="status"></div>
+        <div class="status" id="status">正在初始化语音识别...</div>
     </div>
 
     <script>
-        // 等待 DOM 加载完成
-        document.addEventListener('DOMContentLoaded', () => {
-            const imageUpload = document.getElementById('imageUpload');
-            const classifyBtn = document.getElementById('classifyBtn');
-            const resultText = document.getElementById('resultText');
-            const previewImg = document.getElementById('preview');
+        // 检查浏览器是否支持 Web Speech API
+        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+        if (!SpeechRecognition) {
+            document.getElementById('status').textContent = '错误：您的浏览器不支持语音识别，请使用 Chrome、Edge 或 Safari 等现代浏览器。';
+            document.getElementById('startBtn').disabled = true;
+            document.getElementById('stopBtn').disabled = true;
+        } else {
+            const recognition = new SpeechRecognition();
+            recognition.lang = 'zh-CN';          // 中文
+            recognition.interimResults = true;    // 显示临时结果
+            recognition.maxAlternatives = 1;
+
+            const startBtn = document.getElementById('startBtn');
+            const stopBtn = document.getElementById('stopBtn');
+            const interimText = document.getElementById('interimText');
+            const finalText = document.getElementById('finalText');
             const statusDiv = document.getElementById('status');
 
-            let model = null;
-            let modelLoaded = false;
+            let isListening = false;
 
-            // 加载 ImageNet 标签
-            let imagenetClasses = [];
-            async function loadLabels() {
+            recognition.onstart = () => {
+                isListening = true;
+                statusDiv.textContent = '正在聆听，请说话...';
+                startBtn.disabled = true;
+                stopBtn.disabled = false;
+                interimText.textContent = '（临时结果）';
+                finalText.textContent = '（最终结果）';
+            };
+
+            recognition.onend = () => {
+                isListening = false;
+                statusDiv.textContent = '识别已停止，可点击开始按钮重新识别。';
+                startBtn.disabled = false;
+                stopBtn.disabled = true;
+            };
+
+            recognition.onresult = (event) => {
+                let interim = '';
+                let final = '';
+                for (let i = event.resultIndex; i < event.results.length; i++) {
+                    const transcript = event.results[i][0].transcript;
+                    if (event.results[i].isFinal) {
+                        final += transcript;
+                    } else {
+                        interim += transcript;
+                    }
+                }
+                interimText.textContent = interim || '（等待说话...）';
+                if (final) {
+                    finalText.textContent = final;
+                }
+            };
+
+            recognition.onerror = (event) => {
+                console.error('语音识别错误:', event.error);
+                let msg = '';
+                switch (event.error) {
+                    case 'not-allowed':
+                        msg = '未获得麦克风权限，请允许麦克风后重试。';
+                        break;
+                    case 'no-speech':
+                        msg = '未检测到语音，请重试。';
+                        break;
+                    default:
+                        msg = '识别出错：' + event.error;
+                }
+                statusDiv.textContent = msg;
+                recognition.stop();
+            };
+
+            startBtn.addEventListener('click', () => {
                 try {
-                    const response = await fetch('https://storage.googleapis.com/download.tensorflow.org/data/ImageNetLabels.txt');
-                    const text = await response.text();
-                    imagenetClasses = text.split('\n').filter(line => line.trim() !== '');
-                    // 第一个是背景类，通常去掉
-                    imagenetClasses = imagenetClasses.slice(1);
-                    console.log('标签加载完成，共', imagenetClasses.length);
-                } catch (err) {
-                    console.error('加载标签失败', err);
-                }
-            }
-
-            // 加载 MobileNet 模型
-            async function loadModel() {
-                statusDiv.textContent = '正在加载 MobileNet 模型（约 5MB），请稍候...';
-                try {
-                    await tf.ready();
-                    // 使用 Google Cloud 托管的 MobileNet v2 模型（用于 TensorFlow.js）
-                    const modelUrl = 'https://storage.googleapis.com/tfjs-models/tfjs/mobilenet_v2_1.0_224/model.json';
-                    model = await tf.loadLayersModel(modelUrl);
-                    modelLoaded = true;
-                    await loadLabels(); // 加载分类标签
-                    statusDiv.textContent = '模型加载完成，可以上传图片进行分类！';
-                    classifyBtn.disabled = false;
-                } catch (err) {
-                    statusDiv.textContent = '模型加载失败，请刷新页面重试。错误：' + err.message;
-                    console.error(err);
-                    classifyBtn.disabled = true;
-                }
-            }
-
-            // 预处理图片并推理
-            async function classifyImage(imageElement) {
-                if (!modelLoaded) {
-                    resultText.textContent = '模型尚未加载完成，请稍后再试。';
-                    return;
-                }
-                resultText.textContent = '正在分类，请稍候...';
-                try {
-                    // 将图片转换为 tensor，并调整大小到 224x224，归一化到 [0,1]
-                    const tensor = tf.browser.fromPixels(imageElement)
-                        .resizeNearestNeighbor([224, 224])
-                        .toFloat()
-                        .div(tf.scalar(255))
-                        .expandDims(0);
-                    
-                    const predictions = await model.predict(tensor).data();
-                    // 获取前 3 个预测结果
-                    const topK = 3;
-                    const values = Array.from(predictions);
-                    const indices = values.map((v, i) => i);
-                    indices.sort((a, b) => values[b] - values[a]);
-                    const topIndices = indices.slice(0, topK);
-                    const results = topIndices.map(i => ({
-                        className: imagenetClasses[i] || `类别 ${i}`,
-                        probability: values[i]
-                    }));
-                    
-                    const formatted = results.map(r => `${r.className}：${(r.probability * 100).toFixed(2)}%`).join('；');
-                    resultText.textContent = formatted;
-                    
-                    // 清理 tensor 以释放内存
-                    tensor.dispose();
-                } catch (err) {
-                    resultText.textContent = '分类出错：' + err.message;
-                    console.error(err);
-                }
-            }
-
-            function loadImageFromFile(file) {
-                return new Promise((resolve, reject) => {
-                    const reader = new FileReader();
-                    reader.onload = (e) => {
-                        const img = new Image();
-                        img.onload = () => resolve(img);
-                        img.onerror = reject;
-                        img.src = e.target.result;
-                        previewImg.src = e.target.result;
-                    };
-                    reader.onerror = reject;
-                    reader.readAsDataURL(file);
-                });
-            }
-
-            classifyBtn.addEventListener('click', async () => {
-                const file = imageUpload.files[0];
-                if (!file) {
-                    resultText.textContent = '请先选择一张图片。';
-                    return;
-                }
-                try {
-                    const img = await loadImageFromFile(file);
-                    await classifyImage(img);
-                } catch (err) {
-                    resultText.textContent = '图片加载失败，请重试。';
-                    console.error(err);
+                    recognition.start();
+                } catch (e) {
+                    statusDiv.textContent = '启动失败：' + e.message;
                 }
             });
 
-            // 开始加载模型和标签
-            loadModel();
-        });
+            stopBtn.addEventListener('click', () => {
+                recognition.stop();
+            });
+
+            // 检查麦克风权限（可选）
+            navigator.mediaDevices.getUserMedia({ audio: true })
+                .then(() => {
+                    statusDiv.textContent = '语音识别已就绪，点击“开始识别”并说话。';
+                    startBtn.disabled = false;
+                })
+                .catch((err) => {
+                    statusDiv.textContent = '无法获取麦克风权限，请检查浏览器设置。错误：' + err.message;
+                    startBtn.disabled = true;
+                    stopBtn.disabled = true;
+                });
+        }
     </script>
 </body>
 </html>
